@@ -23,3 +23,5 @@ TestResults.xml
 
 .venv/
 __pycache__/
+film/
+old_venv/
