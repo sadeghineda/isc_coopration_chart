@@ -21,7 +21,13 @@ rad.json
 #Test results file
 TestResults.xml
 
-.venv/
-__pycache__/
+
 film/
+.venv/
 old_venv/
+__pycache__/
+*.pkl
+*.csv
+*.parquet
+*.joblib
+*.zip
