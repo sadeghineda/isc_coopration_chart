@@ -1,0 +1,4 @@
+streamlit>=1.28.0
+streamlit-agraph>=0.0.45
+pyodbc>=4.0.39
+pandas>=2.0.0
