@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_agraph import agraph, Node, Edge, Config
 # برای محیط واقعی
-from database import get_org_data, test_connection
+from database import get_org_data, get_flat_data, get_stats, test_connection
 
 # ===============================
 # تنظیمات صفحه
@@ -12,6 +12,13 @@ st.set_page_config(
     layout="wide"
 )
 
+
+# ===============================
+# تنظیمات دو بازو (اینجا رو ویرایش کنید)
+# ===============================
+# نام دقیق دو معاونتی که باید به عنوان بازو نمایش داده شوند:
+LEFT_ARM_NAME = "مدیریت توسعه کسب و کار"  # 👈 نام دقیق را اینجا وارد کنید
+RIGHT_ARM_NAME = "مدیریت برنامه ریزی"  # 👈 نام دقیق را اینجا وارد کنید
 
 # ===============================
 # تابع کمکی برای شکستن متن
@@ -38,11 +45,14 @@ def wrap_text(text, max_len=18):
 # ===============================
 # ساخت گراف با expand/collapse
 # ===============================
-def build_graph(org_data, expanded_deputies, expanded_managers):
+def build_graph(org_data, expanded_deputies, expanded_managers, left_arm_name, right_arm_name):
     nodes = []
     edges = []
 
-    # ========= CEO =========
+    # مختصات مرکزی
+    CENTER_X = 0
+    
+    # ========= CEO (مدیرعامل) =========
     nodes.append(Node(
         id="ceo",
         label=org_data["ceo"],
@@ -50,34 +60,79 @@ def build_graph(org_data, expanded_deputies, expanded_managers):
         color="#1f4e79",
         font={"color": "white", "size": 14, "face": "B Nazanin"},
         size=30,
-        level=0,
-        x=0,
+        x=CENTER_X,
         y=0
     ))
 
-    # ========= Level 1: مدیریت حوزه مدیرعامل =========
-    ceo_office = "مدیریت حوزه مدیرعامل و هماهنگی امور"
+    # ========= Spine نقاط نامرئی برای خط اصلی =========
+    nodes.append(Node(id="spine_1", label="", size=10, color="#ffffff00", x=CENTER_X, y=120))
+    nodes.append(Node(id="spine_2", label="", size=10, color="#ffffff00", x=CENTER_X, y=280))
+    nodes.append(Node(id="spine_3", label="", size=10, color="#ffffff00", x=CENTER_X, y=440))
+    nodes.append(Node(id="spine_4", label="", size=10, color="#ffffff00", x=CENTER_X, y=600))
+    
+    edges.append(Edge("ceo", "spine_1"))
+    edges.append(Edge("spine_1", "spine_2"))
+    edges.append(Edge("spine_2", "spine_3"))
+    edges.append(Edge("spine_3", "spine_4"))
+
+    # ========= مدیریت حوزه مدیرعامل (کنار خط، در level 1) =========
+    ceo_office = None
+
+    for key in org_data["deputies"].keys():
+        if key.startswith("مديريت حوزه مدير عامل و هماهنگي امور"):
+            ceo_office = key
+            break
+        # ceo_office = "مدیریت حوزه مدیرعامل و هماهنگی امور"
     
     nodes.append(Node(
         id="ceo_office",
         label=wrap_text(ceo_office, 20),
         shape="box",
-        color="#455a64",
+        color="#1f4e79",
         font={"color": "white", "size": 11, "face": "B Nazanin"},
         size=25,
-        level=1,
-        x=0,
-        y=150
+        x=CENTER_X + 400,
+        y=120
     ))
     
-    edges.append(Edge("ceo", "ceo_office"))
+    edges.append(Edge("spine_1", "ceo_office"))
 
-    # ========= Level 2: دو بازو (راست و چپ از خط اصلی) =========
-    left_arm = "مدیریت توسعه کسب‌وکار"
-    right_arm = "مدیریت برنامه‌ریزی"
+    # ========= دو بازو (در level 2 - کنار خط) =========
+    # یافتن نام‌های دقیق از دیتابیس
+    left_arm = LEFT_ARM_NAME
+    right_arm = RIGHT_ARM_NAME
     
+    if left_arm_name:
+        # استفاده از نام دستی
+        if left_arm_name in org_data["deputies"]:
+            left_arm = left_arm_name
+    else:
+        # شناسایی خودکار
+        for dep_name in org_data["deputies"].keys():
+            if "مدیریت توسعه" in dep_name and "کسب  و کار" in dep_name:
+                left_arm = dep_name
+                break
+    
+    if right_arm_name:
+        # استفاده از نام دستی
+        if right_arm_name in org_data["deputies"]:
+            right_arm = right_arm_name
+    else:
+        # شناسایی خودکار
+        for dep_name in org_data["deputies"].keys():
+            if "مدیرت برنامه ریزی " in dep_name:
+                right_arm = dep_name
+                break
+
+    planning_key = None
+
+    for key in org_data["deputies"]:
+        if key.startswith("مديريت برنامه ريزي"):
+            planning_key = key
+            break
+    left_arm = planning_key
     # بازوی چپ
-    if left_arm in org_data["deputies"]:
+    if left_arm and left_arm in org_data["deputies"]:
         arm_left_id = "arm_left"
         
         is_expanded = left_arm in expanded_deputies
@@ -94,12 +149,11 @@ def build_graph(org_data, expanded_deputies, expanded_managers):
             color="#2e7d32",
             font={"color": "white", "size": 11, "face": "B Nazanin"},
             size=25,
-            level=2,
-            x=-300,
-            y=300
+            x=CENTER_X - 350,
+            y=280
         ))
         
-        edges.append(Edge("ceo_office", arm_left_id))
+        edges.append(Edge("spine_2", arm_left_id))
         
         # مدیریت‌های بازوی چپ
         if is_expanded:
@@ -122,9 +176,8 @@ def build_graph(org_data, expanded_deputies, expanded_managers):
                     color="#1976d2",
                     font={"color": "white", "size": 10, "face": "B Nazanin"},
                     size=20,
-                    level=3,
-                    x=-300,
-                    y=450 + (idx * 120)
+                    x=CENTER_X - 600,
+                    y=280 + (idx * 120)
                 ))
                 
                 edges.append(Edge(arm_left_id, mgr_id))
@@ -141,15 +194,21 @@ def build_graph(org_data, expanded_deputies, expanded_managers):
                             color="#66bb6a",
                             font={"color": "white", "size": 9, "face": "B Nazanin"},
                             size=15,
-                            level=4,
-                            x=-500,
-                            y=450 + (idx * 120) + (grp_idx * 80)
+                            x=CENTER_X - 850,
+                            y=280 + (idx * 120) + (grp_idx * 80)
                         ))
                         
                         edges.append(Edge(mgr_id, grp_id))
 
+    planning_key = None
+
+    for key in org_data["deputies"]:
+        if key.startswith("مديريت توسعه كسب و كار"):
+            planning_key = key
+            break
+    right_arm = planning_key
     # بازوی راست
-    if right_arm in org_data["deputies"]:
+    if right_arm and right_arm in org_data["deputies"]:
         arm_right_id = "arm_right"
         
         is_expanded = right_arm in expanded_deputies
@@ -166,12 +225,11 @@ def build_graph(org_data, expanded_deputies, expanded_managers):
             color="#2e7d32",
             font={"color": "white", "size": 11, "face": "B Nazanin"},
             size=25,
-            level=2,
-            x=300,
-            y=300
+            x=CENTER_X + 350,
+            y=280
         ))
         
-        edges.append(Edge("ceo_office", arm_right_id))
+        edges.append(Edge("spine_2", arm_right_id))
         
         # مدیریت‌های بازوی راست
         if is_expanded:
@@ -194,9 +252,8 @@ def build_graph(org_data, expanded_deputies, expanded_managers):
                     color="#1976d2",
                     font={"color": "white", "size": 10, "face": "B Nazanin"},
                     size=20,
-                    level=3,
-                    x=300,
-                    y=450 + (idx * 120)
+                    x=CENTER_X + 600,
+                    y=280 + (idx * 120)
                 ))
                 
                 edges.append(Edge(arm_right_id, mgr_id))
@@ -213,218 +270,149 @@ def build_graph(org_data, expanded_deputies, expanded_managers):
                             color="#66bb6a",
                             font={"color": "white", "size": 9, "face": "B Nazanin"},
                             size=15,
-                            level=4,
-                            x=500,
-                            y=450 + (idx * 120) + (grp_idx * 80)
+                            x=CENTER_X + 850,
+                            y=280 + (idx * 120) + (grp_idx * 80)
                         ))
                         
                         edges.append(Edge(mgr_id, grp_id))
 
-    # ========= بقیه معاونت‌ها (4 تا چپ، 4 تا راست) =========
+    # ========= خط افقی برای معاونت‌ها (level 3) =========
+    # نقاط نامرئی برای ساخت خط افقی
+    excluded_arms = [arm for arm in [left_arm, right_arm, ceo_office] if arm is not None]
+    
     other_deputies = [
         (dep_name, dep_data) 
         for dep_name, dep_data in org_data["deputies"].items()
-        if dep_name not in [left_arm, right_arm]
+        if dep_name not in excluded_arms
     ]
     
-    # تقسیم به دو گروه
-    mid_point = len(other_deputies) // 2
-    left_deputies = other_deputies[:mid_point]
-    right_deputies = other_deputies[mid_point:]
+    num_deputies = len(other_deputies)
     
-    # نود نامرئی برای ادامه spine
-    nodes.append(Node(
-        id="spine_center",
-        label="",
-        size=1,
-        color="#ffffff00",
-        level=2,
-        x=0,
-        y=300
-    ))
-    edges.append(Edge("ceo_office", "spine_center"))
+    # محاسبه فاصله‌ها
+    total_width = 1600
+    spacing = total_width / (num_deputies + 1) if num_deputies > 0 else 200
+    start_x = CENTER_X - (total_width / 2)
     
-    # معاونت‌های چپ
-    for i, (dep_name, dep_data) in enumerate(left_deputies):
-        dep_id = f"dep_left_{i}"
-        
-        is_expanded = dep_name in expanded_deputies
-        label_text = wrap_text(dep_name, 18)
-        if not is_expanded and dep_data["managers"]:
-            label_text += "\n[+]"
-        elif is_expanded:
-            label_text += "\n[−]"
+    # نقاط نامرئی برای خط افقی
+    horizontal_points = []
+    for i in range(num_deputies + 2):  # +2 برای نقاط ابتدا و انتها
+        point_id = f"h_point_{i}"
+        x_pos = start_x + (i * spacing)
         
         nodes.append(Node(
-            id=dep_id,
-            label=label_text,
-            shape="box",
-            color="#4caf50",
-            font={"color": "white", "size": 11, "face": "B Nazanin"},
-            size=25,
-            level=3,
-            x=-600,
-            y=450 + (i * 180)
+            id=point_id,
+            label="",
+            size=1,
+            color="#ffffff00",
+            x=x_pos,
+            y=600
         ))
         
-        edges.append(Edge("spine_center", dep_id))
+        horizontal_points.append(point_id)
         
-        # مدیریت‌ها
-        if is_expanded:
-            mgr_list = list(dep_data["managers"].keys())
-            for mgr_idx, mgr_name in enumerate(mgr_list):
-                mgr_id = f"mgr_dep_left_{i}_{mgr_idx}"
-                mgr_full_key = f"{dep_name}||{mgr_name}"
-                
-                is_mgr_expanded = mgr_full_key in expanded_managers
-                mgr_label = wrap_text(mgr_name, 16)
-                
-                groups = dep_data["managers"][mgr_name]["groups"]
-                if groups:
-                    mgr_label += "\n[+]" if not is_mgr_expanded else "\n[−]"
-                
-                nodes.append(Node(
-                    id=mgr_id,
-                    label=mgr_label,
-                    shape="box",
-                    color="#1976d2",
-                    font={"color": "white", "size": 10, "face": "B Nazanin"},
-                    size=20,
-                    level=4,
-                    x=-800,
-                    y=450 + (i * 180) + (mgr_idx * 100)
-                ))
-                
-                edges.append(Edge(dep_id, mgr_id))
-                
-                # گروه‌ها
-                if is_mgr_expanded and groups:
-                    for grp_idx, grp_name in enumerate(groups):
-                        grp_id = f"grp_dep_left_{i}_{mgr_idx}_{grp_idx}"
-                        
-                        nodes.append(Node(
-                            id=grp_id,
-                            label=wrap_text(grp_name, 14),
-                            shape="box",
-                            color="#66bb6a",
-                            font={"color": "white", "size": 9, "face": "B Nazanin"},
-                            size=15,
-                            level=5,
-                            x=-1000,
-                            y=450 + (i * 180) + (mgr_idx * 100) + (grp_idx * 70)
-                        ))
-                        
-                        edges.append(Edge(mgr_id, grp_id))
+        # اتصال نقاط افقی به هم
+        if i > 0:
+            edges.append(Edge(horizontal_points[i-1], point_id))
     
-    # معاونت‌های راست
-    for i, (dep_name, dep_data) in enumerate(right_deputies):
-        dep_id = f"dep_right_{i}"
-        
-        is_expanded = dep_name in expanded_deputies
-        label_text = wrap_text(dep_name, 18)
-        if not is_expanded and dep_data["managers"]:
-            label_text += "\n[+]"
-        elif is_expanded:
-            label_text += "\n[−]"
-        
-        nodes.append(Node(
-            id=dep_id,
-            label=label_text,
-            shape="box",
-            color="#4caf50",
-            font={"color": "white", "size": 11, "face": "B Nazanin"},
-            size=25,
-            level=3,
-            x=600,
-            y=450 + (i * 180)
-        ))
-        
-        edges.append(Edge("spine_center", dep_id))
-        
-        # مدیریت‌ها
-        if is_expanded:
-            mgr_list = list(dep_data["managers"].keys())
-            for mgr_idx, mgr_name in enumerate(mgr_list):
-                mgr_id = f"mgr_dep_right_{i}_{mgr_idx}"
-                mgr_full_key = f"{dep_name}||{mgr_name}"
-                
-                is_mgr_expanded = mgr_full_key in expanded_managers
-                mgr_label = wrap_text(mgr_name, 16)
-                
-                groups = dep_data["managers"][mgr_name]["groups"]
-                if groups:
-                    mgr_label += "\n[+]" if not is_mgr_expanded else "\n[−]"
-                
-                nodes.append(Node(
-                    id=mgr_id,
-                    label=mgr_label,
-                    shape="box",
-                    color="#1976d2",
-                    font={"color": "white", "size": 10, "face": "B Nazanin"},
-                    size=20,
-                    level=4,
-                    x=800,
-                    y=450 + (i * 180) + (mgr_idx * 100)
-                ))
-                
-                edges.append(Edge(dep_id, mgr_id))
-                
-                # گروه‌ها
-                if is_mgr_expanded and groups:
-                    for grp_idx, grp_name in enumerate(groups):
-                        grp_id = f"grp_dep_right_{i}_{mgr_idx}_{grp_idx}"
-                        
-                        nodes.append(Node(
-                            id=grp_id,
-                            label=wrap_text(grp_name, 14),
-                            shape="box",
-                            color="#66bb6a",
-                            font={"color": "white", "size": 9, "face": "B Nazanin"},
-                            size=15,
-                            level=5,
-                            x=1000,
-                            y=450 + (i * 180) + (mgr_idx * 100) + (grp_idx * 70)
-                        ))
-                        
-                        edges.append(Edge(mgr_id, grp_id))
-
-    # ذخیره mapping برای کلیک
+    # اتصال خط عمودی به وسط خط افقی
+    middle_index = len(horizontal_points) // 2
+    edges.append(Edge("spine_4", horizontal_points[middle_index]))
+    
+    # ========= معاونت‌ها (پایین خط افقی) =========
     deputy_mapping = {}
-    deputy_mapping["arm_left"] = left_arm
-    deputy_mapping["arm_right"] = right_arm
+    if left_arm:
+        deputy_mapping["arm_left"] = left_arm
+    if right_arm:
+        deputy_mapping["arm_right"] = right_arm
+    if ceo_office:
+        deputy_mapping["ceo_office"] = ceo_office
     
-    for i, (dep_name, _) in enumerate(left_deputies):
-        deputy_mapping[f"dep_left_{i}"] = dep_name
-    
-    for i, (dep_name, _) in enumerate(right_deputies):
-        deputy_mapping[f"dep_right_{i}"] = dep_name
-    
-    # ذخیره mapping برای مدیران
     manager_mapping = {}
     
-    # مدیران بازوی چپ
-    if left_arm in org_data["deputies"] and left_arm in expanded_deputies:
+    for i, (dep_name, dep_data) in enumerate(other_deputies):
+        dep_id = f"dep_{i}"
+        deputy_mapping[dep_id] = dep_name
+        
+        is_expanded = dep_name in expanded_deputies
+        label_text = wrap_text(dep_name, 18)
+        if not is_expanded and dep_data["managers"]:
+            label_text += "\n[+]"
+        elif is_expanded:
+            label_text += "\n[−]"
+        
+        # موقعیت x بر اساس شاخص
+        x_pos = start_x + ((i + 1) * spacing)
+        
+        nodes.append(Node(
+            id=dep_id,
+            label=label_text,
+            shape="box",
+            color="#4caf50",
+            font={"color": "white", "size": 11, "face": "B Nazanin"},
+            size=25,
+            x=x_pos,
+            y=750
+        ))
+        
+        # اتصال به نقطه متناظر در خط افقی
+        edges.append(Edge(horizontal_points[i + 1], dep_id))
+        
+        # مدیریت‌ها
+        if is_expanded:
+            mgr_list = list(dep_data["managers"].keys())
+            for mgr_idx, mgr_name in enumerate(mgr_list):
+                mgr_id = f"mgr_dep_{i}_{mgr_idx}"
+                mgr_full_key = f"{dep_name}||{mgr_name}"
+                manager_mapping[mgr_id] = mgr_full_key
+                
+                is_mgr_expanded = mgr_full_key in expanded_managers
+                mgr_label = wrap_text(mgr_name, 16)
+                
+                groups = dep_data["managers"][mgr_name]["groups"]
+                if groups:
+                    mgr_label += "\n[+]" if not is_mgr_expanded else "\n[−]"
+                
+                nodes.append(Node(
+                    id=mgr_id,
+                    label=mgr_label,
+                    shape="box",
+                    color="#1976d2",
+                    font={"color": "white", "size": 10, "face": "B Nazanin"},
+                    size=20,
+                    x=x_pos,
+                    y=900 + (mgr_idx * 120)
+                ))
+                
+                edges.append(Edge(dep_id, mgr_id))
+                
+                # گروه‌ها
+                if is_mgr_expanded and groups:
+                    for grp_idx, grp_name in enumerate(groups):
+                        grp_id = f"grp_dep_{i}_{mgr_idx}_{grp_idx}"
+                        
+                        nodes.append(Node(
+                            id=grp_id,
+                            label=wrap_text(grp_name, 14),
+                            shape="box",
+                            color="#66bb6a",
+                            font={"color": "white", "size": 9, "face": "B Nazanin"},
+                            size=15,
+                            x=x_pos + (200 if grp_idx % 2 == 0 else -200),
+                            y=900 + (mgr_idx * 120) + (grp_idx * 80)
+                        ))
+                        
+                        edges.append(Edge(mgr_id, grp_id))
+    
+    # mapping برای مدیران بازوها
+    if left_arm and left_arm in org_data["deputies"] and left_arm in expanded_deputies:
         for idx, mgr_name in enumerate(org_data["deputies"][left_arm]["managers"].keys()):
             manager_mapping[f"mgr_left_{idx}"] = f"{left_arm}||{mgr_name}"
     
-    # مدیران بازوی راست
-    if right_arm in org_data["deputies"] and right_arm in expanded_deputies:
+    if right_arm and right_arm in org_data["deputies"] and right_arm in expanded_deputies:
         for idx, mgr_name in enumerate(org_data["deputies"][right_arm]["managers"].keys()):
             manager_mapping[f"mgr_right_{idx}"] = f"{right_arm}||{mgr_name}"
-    
-    # مدیران معاونت‌های چپ
-    for i, (dep_name, dep_data) in enumerate(left_deputies):
-        if dep_name in expanded_deputies:
-            for mgr_idx, mgr_name in enumerate(dep_data["managers"].keys()):
-                manager_mapping[f"mgr_dep_left_{i}_{mgr_idx}"] = f"{dep_name}||{mgr_name}"
-    
-    # مدیران معاونت‌های راست
-    for i, (dep_name, dep_data) in enumerate(right_deputies):
-        if dep_name in expanded_deputies:
-            for mgr_idx, mgr_name in enumerate(dep_data["managers"].keys()):
-                manager_mapping[f"mgr_dep_right_{i}_{mgr_idx}"] = f"{dep_name}||{mgr_name}"
 
-    return nodes, edges, deputy_mapping, manager_mapping
+    return nodes, edges, deputy_mapping, manager_mapping, left_arm, right_arm
 
 
 # ===============================
@@ -456,7 +444,7 @@ def main():
             st.session_state.expanded_deputies = set(org_data["deputies"].keys())
             st.rerun()
         
-        if st.button("🔼 بستن همه معاونت‌ها"):
+        if st.button("🔼 بستن همه"):
             st.session_state.expanded_deputies = set()
             st.session_state.expanded_managers = set()
             st.rerun()
@@ -470,21 +458,42 @@ def main():
         - آیکون [+] = قابل باز شدن
         - آیکون [−] = باز شده
         """)
+        
+        st.markdown("---")
+        stats = get_stats()
+        st.metric("تعداد معاونت‌ها", stats["deputies_count"])
+        st.metric("تعداد مدیریت‌ها", stats["managers_count"])
+        st.metric("تعداد گروه‌ها", stats["groups_count"])
+        
+        st.markdown("---")
+        st.markdown("### 🔍 لیست همه معاونت‌ها")
+        
+        # نمایش نام معاونت‌ها
+        with st.expander("کلیک برای مشاهده"):
+            for dep_name in org_data["deputies"].keys():
+                st.text(f"• {dep_name}")
 
     # --- Build graph ---
-    nodes, edges, deputy_mapping, manager_mapping = build_graph(
+    nodes, edges, deputy_mapping, manager_mapping, detected_left, detected_right = build_graph(
         org_data,
         st.session_state.expanded_deputies,
-        st.session_state.expanded_managers
+        st.session_state.expanded_managers,
+        LEFT_ARM_NAME,
+        RIGHT_ARM_NAME
     )
+    
+    # نمایش اطلاعات دیباگ
+    if detected_left or detected_right:
+        st.success(f"✅ بازوهای شناسایی شده: چپ={detected_left or 'یافت نشد'} | راست={detected_right or 'یافت نشد'}")
+    else:
+        st.warning("⚠️ دو بازو شناسایی نشدند. لطفاً نام دقیق آنها را در ابتدای کد تنظیم کنید.")
 
     config = Config(
         width="100%",
-        height=1400,
+        height=1600,
         directed=True,
-        hierarchical=False,  # غیرفعال کردن hierarchical برای استفاده از x,y دستی
+        hierarchical=False,
         physics=False,
-        nodeSpacing=100,
     )
 
     # --- Display graph ---
@@ -502,7 +511,7 @@ def main():
             
             if dep_name in st.session_state.expanded_deputies:
                 st.session_state.expanded_deputies.remove(dep_name)
-                # حذف مدیریت‌های مربوط به این معاونت
+                # حذف مدیریت‌های مربوط
                 st.session_state.expanded_managers = {
                     m for m in st.session_state.expanded_managers
                     if not m.startswith(f"{dep_name}||")
@@ -524,3 +533,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
