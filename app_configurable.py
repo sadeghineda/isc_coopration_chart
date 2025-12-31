@@ -12,6 +12,19 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+<style>
+@font-face {
+    font-family: 'BNazanin';
+    src: url('font/BNazanin.ttf') format('truetype');
+}
+
+html, body, [class*="css"] {
+    font-family: 'BNazanin', sans-serif;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ===============================
 # تنظیمات دو بازو (اینجا رو ویرایش کنید)
@@ -76,17 +89,48 @@ def build_graph(org_data, expanded_deputies, expanded_managers, left_arm_name, r
     edges.append(Edge("spine_3", "spine_4"))
 
     # ========= مدیریت حوزه مدیرعامل (کنار خط، در level 1) =========
+    # ceo_office = None
+
+    # for key in org_data["deputies"].keys():
+    #     if key.startswith("مديريت حوزه مدير عامل و هماهنگي امور"):
+    #         ceo_office = key
+    #         break
+    #     # ceo_office = "مدیریت حوزه مدیرعامل و هماهنگی امور"
+    
+    # nodes.append(Node(
+    #     id="ceo_office",
+    #     label=wrap_text(ceo_office, 20),
+    #     shape="box",
+    #     color="#1f4e79",
+    #     font={"color": "white", "size": 11, "face": "B Nazanin"},
+    #     size=25,
+    #     x=CENTER_X + 400,
+    #     y=120
+    # ))
+    
+    # edges.append(Edge("spine_1", "ceo_office"))
+
     ceo_office = None
 
     for key in org_data["deputies"].keys():
         if key.startswith("مديريت حوزه مدير عامل و هماهنگي امور"):
             ceo_office = key
             break
-        # ceo_office = "مدیریت حوزه مدیرعامل و هماهنگی امور"
+    
+    # بررسی وضعیت expand
+    is_ceo_office_expanded = ceo_office in expanded_deputies if ceo_office else False
+    label_text = wrap_text(ceo_office, 20) if ceo_office else ""
+    
+    # اضافه کردن آیکون [+] یا [-]
+    if ceo_office and ceo_office in org_data["deputies"]:
+        if not is_ceo_office_expanded and org_data["deputies"][ceo_office]["managers"]:
+            label_text += "\n[+]"
+        elif is_ceo_office_expanded:
+            label_text += "\n[−]"
     
     nodes.append(Node(
         id="ceo_office",
-        label=wrap_text(ceo_office, 20),
+        label=label_text,
         shape="box",
         color="#1f4e79",
         font={"color": "white", "size": 11, "face": "B Nazanin"},
@@ -96,6 +140,51 @@ def build_graph(org_data, expanded_deputies, expanded_managers, left_arm_name, r
     ))
     
     edges.append(Edge("spine_1", "ceo_office"))
+
+    # نمایش مدیریت‌های حوزه مدیرعامل (اگر expand شده باشد)
+    if is_ceo_office_expanded and ceo_office in org_data["deputies"]:
+        mgr_list = list(org_data["deputies"][ceo_office]["managers"].keys())
+        for idx, mgr_name in enumerate(mgr_list):
+            mgr_id = f"mgr_ceo_office_{idx}"
+            mgr_full_key = f"{ceo_office}||{mgr_name}"
+            
+            is_mgr_expanded = mgr_full_key in expanded_managers
+            mgr_label = wrap_text(mgr_name, 16)
+            
+            groups = org_data["deputies"][ceo_office]["managers"][mgr_name]["groups"]
+            if groups:
+                mgr_label += "\n[+]" if not is_mgr_expanded else "\n[−]"
+            
+            nodes.append(Node(
+                id=mgr_id,
+                label=mgr_label,
+                shape="box",
+                color="#1976d2",
+                font={"color": "white", "size": 10, "face": "B Nazanin"},
+                size=20,
+                x=CENTER_X + 700,
+                y=120 + (idx * 120)
+            ))
+            
+            edges.append(Edge("ceo_office", mgr_id))
+            
+            # نمایش گروه‌ها (اگر expand شده باشد)
+            if is_mgr_expanded and groups:
+                for grp_idx, grp_name in enumerate(groups):
+                    grp_id = f"grp_ceo_office_{idx}_{grp_idx}"
+                    
+                    nodes.append(Node(
+                        id=grp_id,
+                        label=wrap_text(grp_name, 14),
+                        shape="box",
+                        color="#66bb6a",
+                        font={"color": "white", "size": 9, "face": "B Nazanin"},
+                        size=15,
+                        x=CENTER_X + 950,
+                        y=120 + (idx * 120) + (grp_idx * 80)
+                    ))
+                    
+                    edges.append(Edge(mgr_id, grp_id))
 
     # ========= دو بازو (در level 2 - کنار خط) =========
     # یافتن نام‌های دقیق از دیتابیس
